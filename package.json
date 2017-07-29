@@ -1,6 +1,6 @@
 {
   "name": "momentum-download",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A simple datascaper (downloader) for background images used by the momentum chrome extension",
   "main": "momentum-download.js",
   "author": "avidort <avidor98@gmail.com>",
