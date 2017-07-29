@@ -1,82 +1,102 @@
-const http = require('http');
 const fs = require('fs');
-const rp = require('request-promise');
+const http = require('http');
 const moment = require('moment');
+const rp = require('request-promise');
 
-logger('start');
+logger('Starting');
 
 function fetchAllData() {
   logger('Fetching all data from momentum api...');
+
   return new Promise(function(resolve, reject) {
+    // Predefined persistent metadata to authenticate against momentum api
     const apiUrl = 'https://api.momentumdash.com/backgrounds/history';
     const options = {
       uri: apiUrl,
       headers: {
         'x-momentum-version': '0.96.3',
+
+        // Essentially using my own key, although getting a new one by observing outgoing network from momentum is pretty simple
         'authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2d1aWQiOiIxYTliNGQ3Yy0zODU0LTRhMzgtOGNmMi04OGRhNjgxNTMyZDEiLCJpc3MiOiJsb2dpbi1hcGktdjEiLCJleHAiOjE1MDE3OTkwMjAsIm5iZiI6MTQ3MDI2MzAyMH0.6hEHqqHXruBt52anFFczFgxsUAP9HWvYY2hQod4UjZs',
-        // 'x-momentum-clientdate':'2017-07-29'
       }
     };
 
+    // Setup for data transaction
     let date = moment();
     const receivedData = [];
-    const emptyStateString = '{"history":[]}';
+    const emptyStateString = '{"history":[]}'; // The data is provided as JSON at this point, hence empty state is strictly an empty history array
 
+    // Send api requests recursively until all data is fetched
     async function sendRequest(priorToDate = null) {
+      // Append priorToDate query string parameter if given; Sets momentum api a range of requested data
       const thinOptions = Object.assign(options, !priorToDate ? {} : {uri: `${apiUrl}?priorToDate=${priorToDate}`});
+
       try {
         const body = await rp.get(thinOptions)
-        // console.log(body);
-        if (body !== emptyStateString) {
-          receivedData.push(body);
 
+        // Assuming we're not on empty state, we can save the received data from current iteration and call up another round
+        if (body !== emptyStateString) {
+          receivedData.push(body); // Push a new dataBlock for each request iteration
+
+          // As per client defaults, momentum sets a gap of 39-days before each request
           date = date.subtract(39, 'days');
-          const nextDateFormatted = date.format('YYYY-MM-DD');
-          sendRequest(nextDateFormatted);
-          logger(`Next call: ${nextDateFormatted}`);
+          const nextDateFormatted = date.format('YYYY-MM-DD'); // Format date as string for priorToDate expected format
+          sendRequest(nextDateFormatted); // Call up another iteration with the next gapped date from current
+
+          logger(`Sending next request for: ${nextDateFormatted}`);
         } else {
+          // Resolve the fetchAllData promise, indicating all available data has been fetched and the recursion has reached its stop condition
           resolve(receivedData);
-          logger(`Recursion reached stop condition: All available data fetched (${receivedData.length} requests sent)`)
+          logger(`All available data fetched (${receivedData.length} requests sent)`)
         }
       } catch (error) {
+        // In case any of this business has failed, reject the fetchAllData promise with provided error
         reject(error);
       }
     }
 
-    logger('First call');
-    sendRequest();
+    logger('Sending first request');
+    sendRequest(); // Send the first requset without priorToDate, indicating we start from current real date
   });
 }
 
-fetchAllData().then((data) => console.log(data.length));
+function downlaodFromApi(data) {
+  // Break each dataBlock (resolved api request)
+  data.forEach((block, blockIdx) => {
+    try {
+      const dataBlock = JSON.parse(block);
 
+      // Given any data is available on block, iterate over it and download available files
+      if (dataBlock.history) {
+        dataBlock.history.forEach((dataEntry, entryIdx) => {
+          logger(`Downloading [dataBlock: ${blockIdx}/${data.length - 1}, dataEntry: ${entryIdx}/${dataBlock.history.length - 1}]`);
 
+          // Send an http get request for each file in the respective dataBlock and pipe it to a new file stream until done saving
+          const fileStream = fs.createWriteStream(`momentum-download/${blockIdx}-${entryIdx}.jpg`);
+          http.get(dataEntry.thumbnail_url.replace('https', 'http'), (response) => response.pipe(fileStream));
 
-
-// (error, response, body) => {
-//   logger('data received, saving to file');
-//   fs.writeFile('momentum-data.json', body);
-// }
-
-
-// const file = fs.createWriteStream("file.jpg");
-// const request = http.get("http://i3.ytimg.com/vi/J---aiyznGQ/mqdefault.jpg", function(response) {
-//   response.pipe(file);
-// });
-
-// curl 'https://api.momentumdash.com/backgrounds/history'
-// -H 'pragma: no-cache' -H 'accept-encoding: gzip, deflate, br'
-// -H 'accept-language: en-GB,he;q=0.8,en;q=0.6,en-US;q=0.4'
-// -H 'x-momentum-version: 0.96.3'
-// -H 'authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2d1aWQiOiIxYTliNGQ3Yy0zODU0LTRhMzgtOGNmMi04OGRhNjgxNTMyZDEiLCJpc3MiOiJsb2dpbi1hcGktdjEiLCJleHAiOjE1MDE3OTkwMjAsIm5iZiI6MTQ3MDI2MzAyMH0.6hEHqqHXruBt52anFFczFgxsUAP9HWvYY2hQod4UjZs'
-// -H 'accept: application/json, text/javascript, */*; q=0.01'
-// -H 'cache-control: no-cache'
-// -H 'x-momentum-clientid: 2471970b-fe1f-4795-88bd-5a82308c07a8'
-// -H 'authority: api.momentumdash.com'
-// -H 'cookie: momo_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2d1aWQiOiIxYTliNGQ3Yy0zODU0LTRhMzgtOGNmMi04OGRhNjgxNTMyZDEiLCJpc3MiOiJsb2dpbi1hcGktdjEiLCJleHAiOjE1MDE3OTkwMjAsIm5iZiI6MTQ3MDI2MzAyMH0.6hEHqqHXruBt52anFFczFgxsUAP9HWvYY2hQod4UjZs; momo_token_expires=636373581953404705; ARRAffinity=3505693a8b451d67679c348bd8d62d31aef8eaaafa9083fda4f49e929c986f0e; __stripe_mid=35733941-834a-433f-a601-b17ef93993ef; _ga=GA1.2.1734628077.1501344575; _gid=GA1.2.1126563001.1501344575'
-// -H 'x-momentum-clientdate: 2017-07-29'
-// -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36' --compressed
+          // Increase global download count, despite not taking in account failed file transactions
+          downloadCount++;
+        });
+      }
+    } catch (error) {
+      throw error;
+    }
+  });
+}
 
 function logger(text) {
+  // Prefix logging
   console.log('[momentum-download]', text);
 }
+
+// Keep a global download count
+let downloadCount = 0;
+
+fetchAllData()
+  .then((data) => downlaodFromApi(data))
+  .then(() => logger(`Finishing downlaod for ${downloadCount} files...`)) // In reality, the download requests finish before the actual file stream ends
+  .catch((error) => {
+    // Globally catch all exceptions here
+    throw new Error(error);
+  });
