@@ -5,41 +5,52 @@ const moment = require('moment');
 
 logger('start');
 
-logger('open remote api');
+function fetchAllData() {
+  logger('Fetching all data from momentum api...');
+  return new Promise(function(resolve, reject) {
+    const apiUrl = 'https://api.momentumdash.com/backgrounds/history';
+    const options = {
+      uri: apiUrl,
+      headers: {
+        'x-momentum-version': '0.96.3',
+        'authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2d1aWQiOiIxYTliNGQ3Yy0zODU0LTRhMzgtOGNmMi04OGRhNjgxNTMyZDEiLCJpc3MiOiJsb2dpbi1hcGktdjEiLCJleHAiOjE1MDE3OTkwMjAsIm5iZiI6MTQ3MDI2MzAyMH0.6hEHqqHXruBt52anFFczFgxsUAP9HWvYY2hQod4UjZs',
+        // 'x-momentum-clientdate':'2017-07-29'
+      }
+    };
 
-const apiUrl = 'https://api.momentumdash.com/backgrounds/history';
-const options = {
-  uri: apiUrl,
-  headers: {
-    'x-momentum-version': '0.96.3',
-    'authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2d1aWQiOiIxYTliNGQ3Yy0zODU0LTRhMzgtOGNmMi04OGRhNjgxNTMyZDEiLCJpc3MiOiJsb2dpbi1hcGktdjEiLCJleHAiOjE1MDE3OTkwMjAsIm5iZiI6MTQ3MDI2MzAyMH0.6hEHqqHXruBt52anFFczFgxsUAP9HWvYY2hQod4UjZs',
-    // 'x-momentum-clientdate':'2017-07-29'
-  }
-};
+    let date = moment();
+    const receivedData = [];
+    const emptyStateString = '{"history":[]}';
 
-let date = moment();
-const receivedData = [];
-const emptyStateString = '{"history":[]}';
+    async function sendRequest(priorToDate = null) {
+      const thinOptions = Object.assign(options, !priorToDate ? {} : {uri: `${apiUrl}?priorToDate=${priorToDate}`});
+      try {
+        const body = await rp.get(thinOptions)
+        // console.log(body);
+        if (body !== emptyStateString) {
+          receivedData.push(body);
 
-function sendRequest(priorToDate = null) {
-  const thinOptions = Object.assign(options, !priorToDate ? {} : {uri: `${apiUrl}?priorToDate=${priorToDate}`});
-  rp.get(thinOptions).then((body) => {
-    // console.log(body);
-    if (body !== emptyStateString) {
-      receivedData.push(body);
-
-      date = date.subtract(39, 'days');
-      const nextDateFormatted = date.format('YYYY-MM-DD');
-      sendRequest(nextDateFormatted);
-      logger(`Next call: ${nextDateFormatted}`);
-    } else {
-      logger(`Recursion reached stop condition: All available data fetched (${receivedData.length} requests sent)`)
+          date = date.subtract(39, 'days');
+          const nextDateFormatted = date.format('YYYY-MM-DD');
+          sendRequest(nextDateFormatted);
+          logger(`Next call: ${nextDateFormatted}`);
+        } else {
+          resolve(receivedData);
+          logger(`Recursion reached stop condition: All available data fetched (${receivedData.length} requests sent)`)
+        }
+      } catch (error) {
+        reject(error);
+      }
     }
+
+    logger('First call');
+    sendRequest();
   });
 }
 
-logger('First call');
-sendRequest();
+fetchAllData().then((data) => console.log(data.length));
+
+
 
 
 // (error, response, body) => {
