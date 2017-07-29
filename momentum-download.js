@@ -73,7 +73,7 @@ function downlaodFromApi(data) {
 
           // Send an http get request for each file in the respective dataBlock and pipe it to a new file stream until done saving
           const fileStream = fs.createWriteStream(`momentum-download/${blockIdx}-${entryIdx}.jpg`);
-          http.get(dataEntry.thumbnail_url.replace('https', 'http'), (response) => response.pipe(fileStream));
+          http.get(dataEntry.thumbnail_url.replace('https', 'http'), (response) => response.pipe(fileStream)); // Replace https with http because SSL/TLS isn't supported by the module
 
           // Increase global download count, despite not taking in account failed file transactions
           downloadCount++;
@@ -95,7 +95,7 @@ let downloadCount = 0;
 
 fetchAllData()
   .then((data) => downlaodFromApi(data))
-  .then(() => logger(`Finishing downlaod for ${downloadCount} files...`)) // In reality, the download requests finish before the actual file stream ends
+  .then(() => logger(`Finishing up downlaod for ${downloadCount} files...`)) // In reality, the download requests finish before the actual file stream ends
   .catch((error) => {
     // Globally catch all exceptions here
     throw new Error(error);
